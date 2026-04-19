@@ -16,7 +16,9 @@ import android.content.IntentFilter
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageItemInfo
 import android.content.res.Resources
+import android.graphics.drawable.AdaptiveIconDrawable
 import android.graphics.drawable.Drawable
+import android.graphics.drawable.InsetDrawable
 import android.os.Handler
 import android.os.UserHandle
 import android.os.UserManager
@@ -69,7 +71,11 @@ class LawnchairIconProvider @Inject constructor(
     private var themeMapName: String = ""
     private var _themeMap: Map<String, ThemeData>? = null
 
-    val themeMap: Map<String, ThemeData>
+    private companion object {
+        private const val ICON_CONTENT_SCALE_PERCENT = 75
+    }
+
+    private val themeMap: Map<String, ThemeData>
         get() {
             if (!themedIconsEnabled) {
                 _themeMap = DISABLED_MAP
@@ -179,7 +185,8 @@ class LawnchairIconProvider @Inject constructor(
 
         val iconPackIcon = iconPackEntry?.let { iconPackProvider.getDrawable(it, iconDpi, user) }
 
-        return themedIcon ?: iconPackIcon ?: super.getIcon(info, appInfo, iconDpi)
+        val finalIcon = themedIcon ?: iconPackIcon ?: super.getIcon(info, appInfo, iconDpi)
+        return applyIconSpacing(finalIcon)
     }
 
     override fun getThemeDataForPackage(packageName: String?): ThemeData? {
@@ -247,6 +254,74 @@ class LawnchairIconProvider @Inject constructor(
             add(super.registerIconChangeListener(callback, handler))
             add(IconPackChangeReceiver(context, handler, callback))
             add(LawniconsChangeReceiver(context, handler))
+        }
+    }
+
+    private fun applyIconSpacing(drawable: Drawable): Drawable {
+        val adaptive = drawable as? AdaptiveIconDrawable ?: return drawable
+
+        val bg = cloneDrawable(adaptive.background) ?: return drawable
+        val fg = cloneDrawable(adaptive.foreground) ?: return drawable
+        val mono = getMonochromeDrawable(adaptive)
+
+        val insetFraction = ((100f - ICON_CONTENT_SCALE_PERCENT) / 2f) / 100f
+
+        val insetFg = InsetDrawable(fg, insetFraction)
+        val insetMono = mono?.let {
+            InsetDrawable(cloneDrawable(it) ?: it, insetFraction)
+        }
+
+        return buildAdaptiveIconPreservingMonochrome(
+            bg = bg,
+            fg = insetFg,
+            mono = insetMono,
+        ) ?: drawable
+    }
+
+    private fun buildAdaptiveIconPreservingMonochrome(
+        bg: Drawable,
+        fg: Drawable,
+        mono: Drawable?,
+    ): AdaptiveIconDrawable? {
+        return try {
+            if (mono != null) {
+                val ctor = AdaptiveIconDrawable::class.java.getConstructor(
+                    Drawable::class.java,
+                    Drawable::class.java,
+                    Drawable::class.java,
+                )
+                ctor.newInstance(bg, fg, mono) as AdaptiveIconDrawable
+            } else {
+                AdaptiveIconDrawable(bg, fg)
+            }
+        } catch (_: Throwable) {
+            try {
+                AdaptiveIconDrawable(bg, fg)
+            } catch (_: Throwable) {
+                null
+            }
+        }
+    }
+
+    private fun getMonochromeDrawable(icon: AdaptiveIconDrawable): Drawable? {
+        return try {
+            val method = AdaptiveIconDrawable::class.java.getMethod("getMonochrome")
+            method.invoke(icon) as? Drawable
+        } catch (_: Throwable) {
+            null
+        }
+    }
+
+    private fun cloneDrawable(drawable: Drawable?): Drawable? {
+        if (drawable == null) return null
+        return try {
+            drawable.constantState?.newDrawable()?.mutate() ?: drawable.mutate()
+        } catch (_: Throwable) {
+            try {
+                drawable.mutate()
+            } catch (_: Throwable) {
+                null
+            }
         }
     }
 
