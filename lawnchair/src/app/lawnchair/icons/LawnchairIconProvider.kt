@@ -71,10 +71,6 @@ class LawnchairIconProvider @Inject constructor(
     private var themeMapName: String = ""
     private var _themeMap: Map<String, ThemeData>? = null
 
-    private companion object {
-        private const val ICON_CONTENT_SCALE_PERCENT = 75
-    }
-
     private val themeMap: Map<String, ThemeData>
         get() {
             if (!themedIconsEnabled) {
@@ -447,5 +443,6 @@ class LawnchairIconProvider @Inject constructor(
 
     companion object {
         const val TAG = "LawnchairIconProvider"
+        private const val ICON_CONTENT_SCALE_PERCENT = 75
     }
 }
